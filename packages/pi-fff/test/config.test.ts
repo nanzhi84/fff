@@ -28,6 +28,8 @@ describe("loadConfig", () => {
         "https://raw.githubusercontent.com/dmtrKovalenko/fff/main/packages/pi-fff/pi-fff.schema.json",
       mode: "override" as const,
       maxFileSize: 67108864,
+      definitionsFirst: true,
+      learnSelections: true,
       frecencyDbPath: "/data/frecency",
       historyDbPath: "/data/history",
       enableFsRootScanning: true,
@@ -62,6 +64,8 @@ describe("loadConfig", () => {
 
   test("rejects invalid option values", () => {
     const cases: [Record<string, unknown>, string][] = [
+      [{ definitionsFirst: "true" }, '"definitionsFirst" must be a boolean'],
+      [{ learnSelections: 1 }, '"learnSelections" must be a boolean'],
       ...[0, -1, 1.5, "64MB", Number.MAX_SAFE_INTEGER + 1].map(
         (value) =>
           [

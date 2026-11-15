@@ -57,6 +57,16 @@
       "maximum": 9007199254740991,
       "default": 67108864,
       "description": "Per-file byte limit shared by content indexing and all grep modes. Files above this limit are excluded from content search."
+    },
+    "definitionsFirst": {
+      "type": "boolean",
+      "default": true,
+      "description": "Default page-local definition-first ordering for grep and multi-grep. Keeps references; does not retrieve extra files."
+    },
+    "learnSelections": {
+      "type": "boolean",
+      "default": true,
+      "description": "Learn query/file selections when shown fffind results are successfully read, edited or written. Mere display does not train history."
     }
   }
 }

@@ -259,3 +259,25 @@ node packages/pi-fff/bench/extension.mjs /path/to/queries.json /path/to/fff.json
 The runner's learned-file phase simulates successful reads of shown gold files;
 it is not an autonomous-agent task-success evaluation. The main timing phase
 starts with empty history. RSS includes Node, the extension loader, and native caches.
+
+### Default definition-first ordering and learning
+
+Both `ffgrep` and opt-in `fff-multi-grep` now default to `definitions_first: true`.
+This stably puts native `isDefinition` matches first within each page, retaining
+all references and the native pagination cursor. It does not fetch additional
+files. Set `definitions_first: false` on a call to preserve native order; a
+continuation cursor retains the original ordering setting.
+
+`definitions_only: true` takes precedence and keeps its existing filter/fallback
+semantics. It is not the default.
+
+Global defaults in `~/.pi/agent/pi-fff.json`:
+
+```json
+{ "definitionsFirst": true, "learnSelections": true }
+```
+
+Selection learning is enabled by default. Successful file operations after
+`fffind` train real query history; the benchmark's simulated selections use
+isolated databases and do not pretrain the user's history. `/fff-health` shows
+both settings. Reload or restart Pi after changing configuration.

@@ -13,6 +13,8 @@ export interface FffConfig {
   $schema?: string;
   mode?: FffMode;
   maxFileSize?: number;
+  definitionsFirst?: boolean;
+  learnSelections?: boolean;
   frecencyDbPath?: string;
   historyDbPath?: string;
   enableFsRootScanning?: boolean;
@@ -25,6 +27,8 @@ const CONFIG_KEYS = new Set<keyof FffConfig>([
   "$schema",
   "mode",
   "maxFileSize",
+  "definitionsFirst",
+  "learnSelections",
   "frecencyDbPath",
   "historyDbPath",
   "enableFsRootScanning",
@@ -80,6 +84,8 @@ export function loadConfig(agentDir = piDataDir()): FffConfig {
   validateBoolean(configPath, parsed, "enableHomeDirScanning");
   validateBoolean(configPath, parsed, "warnOnHomeDirScan");
   validateBoolean(configPath, parsed, "followSymlinks");
+  validateBoolean(configPath, parsed, "definitionsFirst");
+  validateBoolean(configPath, parsed, "learnSelections");
 
   if (
     parsed.maxFileSize !== undefined &&
@@ -128,7 +134,9 @@ function validateBoolean(
     | "enableFsRootScanning"
     | "enableHomeDirScanning"
     | "warnOnHomeDirScan"
-    | "followSymlinks",
+    | "followSymlinks"
+    | "definitionsFirst"
+    | "learnSelections",
 ): void {
   const value = config[key];
   if (value !== undefined && typeof value !== "boolean") {

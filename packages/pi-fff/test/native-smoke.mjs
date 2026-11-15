@@ -24,7 +24,7 @@ for (const name of ["aaa", "bbb", "zzz"])
   fs.writeFileSync(path.join(root, `target-${name}.ts`), "// COMMON_NEEDLE\n");
 fs.writeFileSync(
   path.join(root, "model.ts"),
-  "export interface UniqueThing { x: number }\nlet ref: UniqueThing;\n",
+  "let ref: UniqueThing;\nexport interface UniqueThing { x: number }\n",
 );
 git("add", ".");
 git(
@@ -98,6 +98,14 @@ try {
     patterns: ["UNIQUE_BIG_NEEDLE"],
   });
   assert.match(multi.content[0].text, /big.txt/);
+  for (const name of ["ffgrep", "fff-multi-grep"]) {
+    const args = name === "ffgrep" ? { pattern: "UniqueThing" } : { patterns: ["UniqueThing"] };
+    const a = await call(name, args);
+    const b = await call(name, { ...args, definitions_first: false });
+    const order = r => [...r.content[0].text.matchAll(/^ (\d+):/gm)].map(m => Number(m[1]));
+    assert.deepEqual(order(a), [2, 1]);
+    assert.deepEqual(order(b), [1, 2]);
+  }
   const defs = await call("ffgrep", {
     pattern: "UniqueThing",
     definitions_only: true,
@@ -132,6 +140,15 @@ try {
     "consume each selection only once",
   );
   await events.get("session_shutdown")({}, ctx);
+  fs.writeFileSync(path.join(agent, "pi-fff.json"), JSON.stringify({ learnSelections: false }));
+  extension(pi);
+  await events.get("session_start")({}, ctx);
+  const disabledFinder = created.at(-1).finder;
+  assert.equal(unwrap(await disabledFinder.waitForIndexReady(60000)), true);
+  await call("fffind", { pattern: "target" });
+  await events.get("tool_result")({ toolName: "read", isError: false, input: { path: target } }, ctx);
+  assert.equal(unwrap(disabledFinder.fileSearch("target")).scores[0].comboMatchBoost, 1000);
+  await events.get("session_shutdown")({}, ctx);
   const child = execFileSync(
     process.execPath,
     [
@@ -154,6 +171,8 @@ try {
       ok: true,
       checks: [
         "canonical git status",
+        "default definitions-first and per-call opt-out in grep/multi-grep",
+        "learning opt-out",
         "configured 12 MiB grep",
         "multi-grep",
         "definition-only",

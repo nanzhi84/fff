@@ -1236,7 +1236,7 @@ for (const name of ["ffgrep", "fff-multi-grep"]) {
       });
       await tool.execute("ordinary", params, abortOptions().signal);
       expect(calls).toHaveLength(1);
-      expect(calls[0].classifyDefinitions).toBe(normal);
+      expect(calls[0].classifyDefinitions).toBe("classify");
       await shutdown(setup);
     });
   });
@@ -1617,3 +1617,46 @@ function grepPage(line?: string, nextCursor: unknown = null, isDefinition = fals
     },
   };
 }
+
+for (const name of ["ffgrep", "fff-multi-grep"]) {
+  test(`${name} defaults to stable definition-first ordering and preserves cursor opt-out`, async () => {
+    process.env.PI_FFF_MULTIGREP = "1";
+    const page = () => {
+      const r = grepPage("reference", { _offset: 7 });
+      r.value.items = [false, true, false, true].map((isDefinition, i) => ({
+        ...r.value.items[0], lineNumber: i + 1, lineContent: `Needle${i}`, isDefinition,
+      }));
+      r.value.totalMatched = 4;
+      return r;
+    };
+    grepImpl = page;
+    multiGrepImpl = page;
+    const setup = await start();
+    const tool = setup.pi.registerTool.mock.calls.map(([t]) => t).find(t => t.name === name);
+    const params = name === "ffgrep" ? { pattern: "Needle" } : { patterns: ["Needle"] };
+    const run = (extra = {}) => tool.execute("order", { ...params, ...extra }, abortOptions().signal);
+    const order = (r: any) => [...r.content[0].text.matchAll(/^ (\d+):/gm)].map(m => Number(m[1]));
+    expect(order(await run())).toEqual([2, 4, 1, 3]);
+    const native = await run({ definitions_first: false });
+    expect(order(native)).toEqual([1, 2, 3, 4]);
+    const cursor = native.content[0].text.match(/cursor="([^"]+)"/)[1];
+    expect(order(await run({ cursor }))).toEqual([1, 2, 3, 4]);
+    await shutdown(setup);
+  });
+}
+
+test("global definition-first opt-out allows a per-call opt-in", async () => {
+  writeConfig({ definitionsFirst: false, learnSelections: false });
+  grepImpl = () => {
+    const r = grepPage("reference");
+    r.value.items.push({ ...r.value.items[0], lineNumber: 2, isDefinition: true });
+    return r;
+  };
+  const setup = await start();
+  const tool = setup.pi.registerTool.mock.calls.map(([t]) => t).find(t => t.name === "ffgrep");
+  const normal = await tool.execute("native", { pattern: "Needle" }, abortOptions().signal);
+  const first = await tool.execute("first", { pattern: "Needle", definitions_first: true }, abortOptions().signal);
+  expect(normal.content[0].text.indexOf(" 1:")).toBeLessThan(normal.content[0].text.indexOf(" 2:"));
+  expect(first.content[0].text.indexOf(" 2:")).toBeLessThan(first.content[0].text.indexOf(" 1:"));
+  await shutdown(setup);
+});

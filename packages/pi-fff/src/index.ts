@@ -103,6 +103,7 @@ interface ToolGrepCursor {
   finder: FileFinderApi;
   stage: GrepStage;
   foundMatches: boolean;
+  definitionsFirst?: boolean;
   mode?: GrepMode;
   query?: string;
   suggestion?: { query: string; pattern: string; mode: GrepMode };
@@ -334,6 +335,8 @@ export default function fffExtension(pi: ExtensionAPI) {
   const config = loadConfig();
   const maxFileSize = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
   const selections = new QuerySelections();
+  const definitionsFirstDefault = config.definitionsFirst ?? true;
+  const learnSelections = config.learnSelections ?? true;
 
   // All startup options use the same flag > env > file > fallback order.
   function getConfigValue<T>(
@@ -884,7 +887,7 @@ export default function fffExtension(pi: ExtensionAPI) {
   });
 
   pi.on("tool_result", (event, ctx) => {
-    if (event.isError || !["read", "edit", "write"].includes(event.toolName)) return;
+    if (!learnSelections || event.isError || !["read", "edit", "write"].includes(event.toolName)) return;
     if (typeof event.input.path !== "string") return;
     selections.select(canonicalPath(path.resolve(ctx.cwd, event.input.path)));
   });
@@ -985,6 +988,10 @@ export default function fffExtension(pi: ExtensionAPI) {
 
   // --- grep tool ---
 
+  const definitionsFirstSchema = Type.Optional(Type.Boolean({
+    description: "Put definitions first within the current page, retaining references. Defaults to the definitionsFirst config (true). definitions_only takes precedence.",
+  }));
+
   const definitionsOnlySchema = Type.Optional(
     Type.Boolean({
       description:
@@ -994,6 +1001,7 @@ export default function fffExtension(pi: ExtensionAPI) {
 
   const grepSchema = Type.Object({
     definitions_only: definitionsOnlySchema,
+    definitions_first: definitionsFirstSchema,
     pattern: Type.String({
       description: "Search pattern (literal text or regex)",
     }),
@@ -1031,7 +1039,7 @@ export default function fffExtension(pi: ExtensionAPI) {
   });
 
   queueTool(() => toolNames.grep, {
-    description: `Grep file contents. Smart-case, auto-detects regex vs literal, git-aware. Results are ranked by frecency (most-accessed files first); matches within a file stay in source order. Default limit ${DEFAULT_GREP_LIMIT}. Files larger than ${maxFileSize} bytes are excluded from content search.`,
+    description: `Grep file contents. Smart-case, auto-detects regex vs literal, git-aware. Results are ranked by frecency (most-accessed files first); Definitions are ranked first within each page by default; references are retained. Set definitions_first: false for native order. Default limit ${DEFAULT_GREP_LIMIT}. Files larger than ${maxFileSize} bytes are excluded from content search.`,
     promptSnippet: "Grep contents",
     promptGuidelines: (names) => [
       `${names.grep}: prefer bare identifiers as patterns. Literal queries are most efficient.`,
@@ -1114,6 +1122,7 @@ export default function fffExtension(pi: ExtensionAPI) {
             mode,
           })
         : undefined;
+      const definitionsFirst = resumed?.definitionsFirst ?? params.definitions_first ?? definitionsFirstDefault;
       const foundMatches = resumed?.foundMatches ?? false;
       const options = {
         smartCase,
@@ -1192,6 +1201,7 @@ export default function fffExtension(pi: ExtensionAPI) {
         }
       }
 
+      if (!preferDefinitions && definitionsFirst) result.items = definitionsFirstInPage(result.items);
       let output = formatGrepOutput(result);
       if (
         suggestion &&
@@ -1217,6 +1227,7 @@ export default function fffExtension(pi: ExtensionAPI) {
           finder: picker,
           stage,
           foundMatches: foundMatches || result.items.length > 0,
+          definitionsFirst,
           mode,
           query,
           suggestion,
@@ -1346,10 +1357,12 @@ export default function fffExtension(pi: ExtensionAPI) {
 
       const result = searchResult.value;
       const formatted = formatFindOutput(result, effectiveLimit, pattern);
-      selections.remember(
-        picker, query, auxRoot ?? activeCwd,
-        result.items.slice(0, formatted.shownCount).map((item) => item.relativePath),
-      );
+      if (learnSelections) {
+        selections.remember(
+          picker, query, auxRoot ?? activeCwd,
+          result.items.slice(0, formatted.shownCount).map((item) => item.relativePath),
+        );
+      }
       let output = formatted.output;
 
       // Infer hasMore: native fileSearch fills pageSize when more results
@@ -1417,6 +1430,7 @@ export default function fffExtension(pi: ExtensionAPI) {
   if (enableMultiGrep) {
     const multiGrepSchema = Type.Object({
       definitions_only: definitionsOnlySchema,
+      definitions_first: definitionsFirstSchema,
       patterns: Type.Array(Type.String(), {
         description:
           "Literal patterns (OR). Include snake_case/camelCase/PascalCase variants.",
@@ -1466,6 +1480,7 @@ export default function fffExtension(pi: ExtensionAPI) {
 
         let stage =
           resumed?.stage ?? (params.definitions_only ? "definitions" : "normal");
+        const definitionsFirst = resumed?.definitionsFirst ?? params.definitions_first ?? definitionsFirstDefault;
         const foundMatches = resumed?.foundMatches ?? false;
         const options = {
           patterns: params.patterns,
@@ -1480,7 +1495,7 @@ export default function fffExtension(pi: ExtensionAPI) {
         };
         const grepResult = f.multiGrep({
           ...options,
-          classifyDefinitions: stage === "definitions" ? "definition_only" : "off",
+          classifyDefinitions: stage === "definitions" ? "definition_only" : stage === "normal" && definitionsFirst ? "classify" : "off",
         });
 
         if (!grepResult.ok) throw new Error(grepResult.error);
@@ -1502,6 +1517,7 @@ export default function fffExtension(pi: ExtensionAPI) {
           stage = "references";
         }
         if (stage === "definitions") result.items = exactDefinitionsFirst(result.items);
+        if (stage === "normal" && definitionsFirst) result.items = definitionsFirstInPage(result.items);
         let output = formatGrepOutput(result);
 
         const notices: string[] = [];
@@ -1513,6 +1529,7 @@ export default function fffExtension(pi: ExtensionAPI) {
             finder: f,
             stage,
             foundMatches: foundMatches || result.items.length > 0,
+            definitionsFirst,
           });
           notices.push(`More available. cursor="${cursor}" to continue`);
         }
@@ -1623,6 +1640,8 @@ export default function fffExtension(pi: ExtensionAPI) {
       const lines = [
         `FFF v${health.value.version}`,
         `Mode: ${getMode()}`,
+        `Definitions first: ${definitionsFirstDefault ? "on" : "off"} (within each page)`,
+        `Selection learning: ${learnSelections ? "on" : "off"}`,
         `Git: ${health.value.git.repositoryFound ? `yes (${health.value.git.workdir ?? "unknown"})` : "no"}`,
         `Picker: ${health.value.filePicker.initialized ? `${health.value.filePicker.indexedFiles ?? 0} files` : "not initialized"}`,
         `Frecency: ${health.value.frecency.initialized ? "active" : "disabled"}`,
@@ -1799,4 +1818,8 @@ function isWordByte(byte: number | undefined): boolean {
   return (
     byte === 0x5f || (byte >= 0x30 && byte <= 0x39) || (lower >= 0x61 && lower <= 0x7a)
   );
+}
+
+function definitionsFirstInPage(items: GrepResult["items"]): GrepResult["items"] {
+  return [...items].sort((a, b) => Number(!!b.isDefinition) - Number(!!a.isDefinition));
 }
