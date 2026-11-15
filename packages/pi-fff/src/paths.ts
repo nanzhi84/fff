@@ -71,3 +71,11 @@ function existingDir(parent: string, name: string): string | undefined {
     return undefined;
   }
 }
+
+export function canonicalPath(value: string): string {
+  try {
+    return fs.realpathSync.native(value);
+  } catch {
+    return path.resolve(value);
+  }
+}

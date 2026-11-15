@@ -1,3 +1,5 @@
+import { DEFAULT_MAX_FILE_SIZE } from "./config";
+import { canonicalPath } from "./paths";
 import type { FileFinderApi, InitOptions, Result } from "@ff-labs/fff-node";
 import { type FileFinderStatic, loadSdk, SCAN_TIMEOUT_MS } from "./sdk";
 
@@ -11,16 +13,19 @@ export interface PickerOptions {
 /** Opens every picker in this pi process — the cwd picker and the aux pickers —
  * on the same frecency/history databases. */
 export class FilePickerFactory {
+  private readonly maxFileSize: number;
   private dbDisabled = false;
   private readonly frecencyDbPath: string;
   private readonly historyDbPath: string;
   private readonly onDbFailure?: (error: string) => void;
 
   constructor(opts: {
+    maxFileSize?: number;
     frecencyDbPath: string;
     historyDbPath: string;
     onDbFailure?: (error: string) => void;
   }) {
+    this.maxFileSize = opts.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
     this.frecencyDbPath = opts.frecencyDbPath;
     this.historyDbPath = opts.historyDbPath;
     this.onDbFailure = opts.onDbFailure;
@@ -52,7 +57,12 @@ export class FilePickerFactory {
     FileFinder: FileFinderStatic,
     options: PickerOptions,
   ): Result<FileFinderApi> {
-    const init: InitOptions = { ...options, aiMode: true };
+    const init: InitOptions = {
+      ...options,
+      basePath: canonicalPath(options.basePath),
+      cacheBudgetMaxFileSize: this.maxFileSize,
+      aiMode: true,
+    };
     if (this.dbDisabled) return FileFinder.create(init);
 
     const result = FileFinder.create({

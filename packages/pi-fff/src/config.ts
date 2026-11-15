@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { piDataDir } from "./paths";
 
+export const DEFAULT_MAX_FILE_SIZE = 64 * 1024 * 1024;
+
 export const CONFIG_FILE_NAME = "pi-fff.json";
 export const VALID_MODES = ["tools-and-ui", "tools-only", "override"] as const;
 
@@ -10,6 +12,7 @@ export type FffMode = (typeof VALID_MODES)[number];
 export interface FffConfig {
   $schema?: string;
   mode?: FffMode;
+  maxFileSize?: number;
   frecencyDbPath?: string;
   historyDbPath?: string;
   enableFsRootScanning?: boolean;
@@ -21,6 +24,7 @@ export interface FffConfig {
 const CONFIG_KEYS = new Set<keyof FffConfig>([
   "$schema",
   "mode",
+  "maxFileSize",
   "frecencyDbPath",
   "historyDbPath",
   "enableFsRootScanning",
@@ -59,8 +63,14 @@ export function loadConfig(agentDir = piDataDir()): FffConfig {
     }
   }
 
-  if (parsed.mode !== undefined && !VALID_MODES.includes(parsed.mode as FffMode)) {
-    throw invalidConfig(configPath, `"mode" must be one of ${VALID_MODES.join(", ")}`);
+  if (
+    parsed.mode !== undefined &&
+    !VALID_MODES.includes(parsed.mode as FffMode)
+  ) {
+    throw invalidConfig(
+      configPath,
+      `"mode" must be one of ${VALID_MODES.join(", ")}`,
+    );
   }
 
   validateString(configPath, parsed, "$schema");
@@ -70,6 +80,17 @@ export function loadConfig(agentDir = piDataDir()): FffConfig {
   validateBoolean(configPath, parsed, "enableHomeDirScanning");
   validateBoolean(configPath, parsed, "warnOnHomeDirScan");
   validateBoolean(configPath, parsed, "followSymlinks");
+
+  if (
+    parsed.maxFileSize !== undefined &&
+    (!Number.isSafeInteger(parsed.maxFileSize) ||
+      (parsed.maxFileSize as number) <= 0)
+  ) {
+    throw invalidConfig(
+      configPath,
+      '"maxFileSize" must be a positive safe integer (bytes)',
+    );
+  }
 
   return parsed as FffConfig;
 }
@@ -92,7 +113,10 @@ function validateString(
   key: "$schema" | "frecencyDbPath" | "historyDbPath",
 ): void {
   const value = config[key];
-  if (value !== undefined && (typeof value !== "string" || value.length === 0)) {
+  if (
+    value !== undefined &&
+    (typeof value !== "string" || value.length === 0)
+  ) {
     throw invalidConfig(configPath, `"${key}" must be a non-empty string`);
   }
 }

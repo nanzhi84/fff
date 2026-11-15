@@ -13,7 +13,11 @@
     },
     "mode": {
       "type": "string",
-      "enum": ["tools-and-ui", "tools-only", "override"],
+      "enum": [
+        "tools-and-ui",
+        "tools-only",
+        "override"
+      ],
       "default": "tools-and-ui",
       "description": "Controls which FFF tools and autocomplete integrations are enabled."
     },
@@ -46,6 +50,13 @@
       "type": "boolean",
       "default": true,
       "description": "Indexes through directory symlinks, e.g. a git worktree or stow layout whose files live behind links. Set to false to keep the walk inside the real tree."
+    },
+    "maxFileSize": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "default": 67108864,
+      "description": "Per-file byte limit shared by content indexing and all grep modes. Files above this limit are excluded from content search."
     }
   }
 }

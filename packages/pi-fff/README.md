@@ -216,3 +216,46 @@ No project files are uploaded anywhere by this extension. It runs locally and on
 - No telemetry
 - No credential handling beyond whatever pi and your configured model provider already do
 - Search state is stored locally under `~/.pi/agent/fff/`
+
+## nanzhi84 fork
+
+Install the maintained fork branch with:
+
+```sh
+pi install git:github.com/nanzhi84/fff@fix/pi-search-reliability
+```
+
+This branch pins both SDKs to `0.11.1-nightly.924cb4d`, which includes the
+Node definition-flag layout fix. The git package root declares its runtime
+dependencies so Pi's git installer can install them without a Rust build.
+
+Content search has a configurable per-file limit, default **64 MiB**. Put
+`{"maxFileSize": 134217728}` in `~/.pi/agent/pi-fff.json` to allow 128 MiB files.
+The same limit applies to the content cache, grep, fuzzy fallback, and multi-grep.
+Larger files remain excluded; use Pi's built-in grep for those. Raising the
+limit can increase indexing time and memory consumption. Restart Pi after changes.
+
+Picker roots are resolved through filesystem symlinks before native creation,
+so macOS `/tmp` and `/private/tmp` agree with libgit2's repository paths.
+
+Successful `read`, `edit`, or `write` calls on files just shown by `fffind` record
+that query/file selection. Merely listing results does not train the history.
+The latest query per file is retained, at most 256 pending files, and a selection
+is consumed once. Session teardown clears pending selections. This trains query
+combo boosts, not access frecency; existing editor frecency databases are still
+supported separately.
+
+Validation: `npm install`, `npm test`, `npm run typecheck`, and
+`node packages/pi-fff/test/native-smoke.mjs` from the repository root.
+
+The benchmark runner calls the actual extension tools (including formatting and
+fuzzy fallback), uses isolated databases, and measures readiness without fixed
+sleeps. Reuse the existing query set:
+
+```sh
+node packages/pi-fff/bench/extension.mjs /path/to/queries.json /path/to/fff.json 5
+```
+
+The runner's learned-file phase simulates successful reads of shown gold files;
+it is not an autonomous-agent task-success evaluation. The main timing phase
+starts with empty history. RSS includes Node, the extension loader, and native caches.

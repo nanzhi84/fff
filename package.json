@@ -1,6 +1,31 @@
 {
   "private": true,
   "pi": {
-    "extensions": ["./packages/pi-fff/src/index.ts"]
+    "extensions": [
+      "./packages/pi-fff/src/index.ts"
+    ]
+  },
+  "dependencies": {
+    "@ff-labs/fff-node": "0.11.1-nightly.924cb4d",
+    "@ff-labs/fff-bun": "0.11.1-nightly.924cb4d"
+  },
+  "name": "@nanzhi84/pi-fff-fork",
+  "version": "0.11.1-fork.1",
+  "type": "module",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.8",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0",
+    "bun": "1.3.13",
+    "@biomejs/biome": "2.4.6"
+  },
+  "scripts": {
+    "test": "bun test packages/pi-fff/test/",
+    "typecheck": "tsc -p packages/pi-fff/tsconfig.json"
   }
 }

@@ -5,6 +5,8 @@
  * @-mention autocomplete suggestions to the interactive editor.
  */
 
+import path from "node:path";
+import { QuerySelections } from "./query-selections";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -28,9 +30,9 @@ import type {
 } from "@ff-labs/fff-node";
 import { Type, type TSchema } from "@sinclair/typebox";
 import { AuxFinderPool, routePathConstraint } from "./aux-finders";
-import { type FffMode, loadConfig, VALID_MODES } from "./config";
+import { DEFAULT_MAX_FILE_SIZE, type FffMode, loadConfig, VALID_MODES } from "./config";
 import { FilePickerFactory } from "./file-picker";
-import { isFsRoot, isHomeDir, resolveDbPaths } from "./paths";
+import { canonicalPath, isFsRoot, isHomeDir, resolveDbPaths } from "./paths";
 import { buildQuery } from "./query";
 
 export { SCAN_TIMEOUT_MS } from "./sdk";
@@ -330,6 +332,8 @@ export default function fffExtension(pi: ExtensionAPI) {
   let activeCwd = process.cwd();
 
   const config = loadConfig();
+  const maxFileSize = config.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+  const selections = new QuerySelections();
 
   // All startup options use the same flag > env > file > fallback order.
   function getConfigValue<T>(
@@ -467,6 +471,7 @@ export default function fffExtension(pi: ExtensionAPI) {
     if (pickers) return;
 
     pickers = new FilePickerFactory({
+      maxFileSize,
       frecencyDbPath: resolvedDbPaths.frecency,
       historyDbPath: resolvedDbPaths.history,
       onDbFailure: (error) =>
@@ -563,6 +568,7 @@ export default function fffExtension(pi: ExtensionAPI) {
   }
 
   function destroyFinder() {
+    selections.clear();
     if (mainFinder && !mainFinder.isDestroyed) {
       mainFinder.destroy();
       mainFinder = null;
@@ -785,6 +791,7 @@ export default function fffExtension(pi: ExtensionAPI) {
   }
 
   function prepareSession(ctx: ExtensionContext): void {
+    if (activeCwd !== ctx.cwd) selections.clear();
     activeCwd = ctx.cwd;
     uiCtx = ctx;
     if (toolsRegistered) return;
@@ -874,6 +881,12 @@ export default function fffExtension(pi: ExtensionAPI) {
     uiCtx = ctx;
     destroyFinder();
     uiCtx = null;
+  });
+
+  pi.on("tool_result", (event, ctx) => {
+    if (event.isError || !["read", "edit", "write"].includes(event.toolName)) return;
+    if (typeof event.input.path !== "string") return;
+    selections.select(canonicalPath(path.resolve(ctx.cwd, event.input.path)));
   });
 
   // --- Shared render helpers ---
@@ -1018,7 +1031,7 @@ export default function fffExtension(pi: ExtensionAPI) {
   });
 
   queueTool(() => toolNames.grep, {
-    description: `Grep file contents. Smart-case, auto-detects regex vs literal, git-aware. Results are ranked by frecency (most-accessed files first); matches within a file stay in source order. Default limit ${DEFAULT_GREP_LIMIT}.`,
+    description: `Grep file contents. Smart-case, auto-detects regex vs literal, git-aware. Results are ranked by frecency (most-accessed files first); matches within a file stay in source order. Default limit ${DEFAULT_GREP_LIMIT}. Files larger than ${maxFileSize} bytes are excluded from content search.`,
     promptSnippet: "Grep contents",
     promptGuidelines: (names) => [
       `${names.grep}: prefer bare identifiers as patterns. Literal queries are most efficient.`,
@@ -1105,6 +1118,7 @@ export default function fffExtension(pi: ExtensionAPI) {
       const options = {
         smartCase,
         maxMatchesPerFile: GREP_MAX_MATCHES_PER_FILE,
+        maxFileSize,
         pageSize,
         beforeContext: context,
         afterContext: context,
@@ -1161,6 +1175,7 @@ export default function fffExtension(pi: ExtensionAPI) {
           mode: "fuzzy",
           smartCase,
           maxMatchesPerFile: GREP_MAX_MATCHES_PER_FILE,
+          maxFileSize,
           pageSize,
           cursor: null,
           beforeContext: 0,
@@ -1184,7 +1199,7 @@ export default function fffExtension(pi: ExtensionAPI) {
         result.items.length === 0 &&
         !result.nextCursor
       ) {
-        const suggested = suggestOtherFiles(picker, suggestion, query, smartCase, signal);
+        const suggested = suggestOtherFiles(picker, suggestion, query, smartCase, maxFileSize, signal);
         if (suggested) {
           return {
             content: [{ type: "text", text: suggested }],
@@ -1331,6 +1346,10 @@ export default function fffExtension(pi: ExtensionAPI) {
 
       const result = searchResult.value;
       const formatted = formatFindOutput(result, effectiveLimit, pattern);
+      selections.remember(
+        picker, query, auxRoot ?? activeCwd,
+        result.items.slice(0, formatted.shownCount).map((item) => item.relativePath),
+      );
       let output = formatted.output;
 
       // Infer hasMore: native fileSearch fills pageSize when more results
@@ -1452,6 +1471,7 @@ export default function fffExtension(pi: ExtensionAPI) {
           patterns: params.patterns,
           constraints: params.constraints,
           maxMatchesPerFile: GREP_MAX_MATCHES_PER_FILE,
+          maxFileSize,
           pageSize,
           smartCase: true,
           cursor: resumed?.cursor ?? null,
@@ -1663,6 +1683,7 @@ function suggestOtherFiles(
   suggestion: { query: string; pattern: string; mode: GrepMode },
   scopedQuery: string,
   smartCase: boolean,
+  maxFileSize: number,
   signal?: AbortSignal,
 ): string | undefined {
   if (signal?.aborted) throw new Error("Operation aborted");
@@ -1673,6 +1694,7 @@ function suggestOtherFiles(
       classifyDefinitions: "off",
       pageSize: 3,
       maxMatchesPerFile: 1,
+      maxFileSize,
       timeBudgetMs: 100,
       enforceTimeBudget: true,
       beforeContext: 0,

@@ -10,19 +10,10 @@
     "types": [
       "node",
       "bun"
-    ],
-    "paths": {
-      "@ff-labs/fff-node": [
-        "../fff-node/src/index.ts"
-      ],
-      "@ff-labs/fff-bun": [
-        "../fff-bun/src/index.ts"
-      ]
-    }
+    ]
   },
   "include": [
     "src",
-    "test",
-    "../fff-bun/src/embed.d.ts"
+    "test"
   ]
 }

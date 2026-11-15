@@ -241,7 +241,8 @@ function abortOptions() {
 }
 
 function finderFor(basePath: string): MockFinder {
-  const index = createCalls.findIndex((options: any) => options.basePath === basePath);
+  const normalized = fs.existsSync(basePath) ? fs.realpathSync.native(basePath) : basePath;
+  const index = createCalls.findIndex((options: any) => options.basePath === normalized);
   expect(index).toBeGreaterThanOrEqual(0);
   return finders[index];
 }
@@ -312,6 +313,7 @@ describe("pi-fff global config", () => {
       frecencyDbPath: "/config/frecency",
       historyDbPath: "/config/history",
       aiMode: true,
+      cacheBudgetMaxFileSize: 67108864,
       enableHomeDirScanning: false,
       enableFsRootScanning: true,
       followSymlinks: false,
@@ -348,6 +350,7 @@ describe("pi-fff global config", () => {
       frecencyDbPath: "/flag/frecency",
       historyDbPath: "/env/history",
       aiMode: true,
+      cacheBudgetMaxFileSize: 67108864,
       enableHomeDirScanning: true,
       enableFsRootScanning: false,
       followSymlinks: false,
@@ -766,6 +769,7 @@ describe("pi-fff autocomplete registration", () => {
         frecencyDbPath: expect.any(String),
         historyDbPath: expect.any(String),
         aiMode: true,
+      cacheBudgetMaxFileSize: 67108864,
         enableHomeDirScanning: true,
         enableFsRootScanning: false,
         followSymlinks: true,

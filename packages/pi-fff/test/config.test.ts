@@ -27,6 +27,7 @@ describe("loadConfig", () => {
       $schema:
         "https://raw.githubusercontent.com/dmtrKovalenko/fff/main/packages/pi-fff/pi-fff.schema.json",
       mode: "override" as const,
+      maxFileSize: 67108864,
       frecencyDbPath: "/data/frecency",
       historyDbPath: "/data/history",
       enableFsRootScanning: true,
@@ -61,13 +62,23 @@ describe("loadConfig", () => {
 
   test("rejects invalid option values", () => {
     const cases: [Record<string, unknown>, string][] = [
+      ...[0, -1, 1.5, "64MB", Number.MAX_SAFE_INTEGER + 1].map(
+        (value) =>
+          [
+            { maxFileSize: value },
+            '"maxFileSize" must be a positive safe integer',
+          ] as [Record<string, unknown>, string],
+      ),
       [{ $schema: false }, '"$schema" must be a non-empty string'],
       [{ $schema: "" }, '"$schema" must be a non-empty string'],
       [{ mode: "replace" }, '"mode" must be one of'],
       [{ frecencyDbPath: "" }, '"frecencyDbPath" must be a non-empty string'],
       [{ historyDbPath: false }, '"historyDbPath" must be a non-empty string'],
       [{ enableFsRootScanning: 1 }, '"enableFsRootScanning" must be a boolean'],
-      [{ enableHomeDirScanning: "false" }, '"enableHomeDirScanning" must be a boolean'],
+      [
+        { enableHomeDirScanning: "false" },
+        '"enableHomeDirScanning" must be a boolean',
+      ],
       [{ warnOnHomeDirScan: "false" }, '"warnOnHomeDirScan" must be a boolean'],
       [{ followSymlinks: "true" }, '"followSymlinks" must be a boolean'],
     ];
